@@ -10,25 +10,64 @@ DIRECTORY=''
 MOUNT_DIR=''
 VOLUME=''
 INSTANCE=''
+REGION=''
+AVAILABILITY_ZONE=''
+IMAGE_ID=''
+VOLUME_SIZE=''
+DIR_SIZE=''
+EC2_HOST=''
+####################################
+#
+#if -v is indicated, check the size of volume
+#Create instance and attach volume, mount disk
+#
+#Created by Richard
+#
+function CheckVolumeSize{
+   
+VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query 'Volumes[*].[Size]' --output text)
 
+if [ $VOLUME_SIZE>= `expr $DIR_SIZE \\* 2` ];then
 
+    AVAILABILITY_ZONE=$(aws ec2 describe-volumes --volume-ids vol-15bea6cb --query 'Volumes[*].[AvailabilityZone]' --output text)
 
+fi
+else
 
-#####################################
+###Create new volume here###
 
+fi
+}
 
+function CreateInstance{
 
+declare -a INSTANCEID
 
+INSTANCEID=('ami-fce3c696' 'ami-06116566' 'ami-9abea4fb' 'ami-f95ef58a' 'ami-87564feb' 'ami-a21529cc' 'ami-09dc1267' 'ami-25c00c46' 'ami-6c14310f' 'ami-0fb83963')
 
+aws ec2 create-key-pair --key-name CS615KEY
 
+aws ec2 create-security-group --group-name MY-SG 
 
+aws ec2 authorize-security-group-ingress --group-name MY-SG --port 22 --protocol tcp --cidr 0.0.0.0/0
 
+if [[ $EC2_BACKUP_FLAGS_AWS != "" ]]; then
+    INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID --count 1 $EC2_BACKUP_FLAGS_AWS --key-name CS615KEY --security-groups MY-SG --output text --query 'Instances[*].InstanceId')
+fi
+else
+   INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID --count 1 --instance-type t2.micro --key-name CS615KEY --security-groups MY-SG --output text --query 'Instances[*].InstanceId')
+fi
 
+EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE --query 'Reservations[*].Instances[*].NetworkInterfaces.Association.PublicIp' --output text)
+}
 
+aws ec2 attach-volume --volume-id $VOLUME --instance-id $INSTANCE --device /dev/xvdf 
 
+ssh $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo mkfs -t ext4 /dev/xvdf  
 
+MOUNT_DIR='~/MOUNT'
 
-
+ssh $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo mount /dev/xvdf MOUNT_DIR 
 ######################################
 #
 # execute backup dd/rsync
