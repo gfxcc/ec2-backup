@@ -1,0 +1,45 @@
+        +-----------+
+        |   START   |
+        +-----+-----+
+              |
+              v
+    +---------+-----------+
+    | getopts(set method, |
+    | directory,^olume-id)|
+    +---------+-----------+
+              |
+              v
++-------------+------------------+
+|   command valid check include{ |
+|   1.method valid               |
+|   2.directory valid            |
+|   3.EC2-BACKUP_FLAGS_SSH valid |
+|   }                            |
++-------------+------------------+
+              |
+              v
++-------------+-----------------+
+|   if -v not set, create EBS   |
+|   volume, if -v indicated,    |
+|   check the size of volume    |
+|                               |
++-------------+-----------------+
+              |
+              v
++-------------+-----------------+
+|   create instance and attach  |
+|   volume, mount disk          |
+|                               |
++-------------------------------+
+              |
+              v
++-------------+-----------------+
+|   execute backup              |
+|   dd or rsync                 |
+|                               |
++-------------------------------+
+              |
+              v
+        +-----------+
+        |    END    |
+        +-----------+
