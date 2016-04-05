@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# YongCao     Jignesh     Richard
+# YongCao(ycao18)     Jignesh     Richard
 #
 # [INFO] [DEBUG] [ERROR]
 #
@@ -8,8 +8,8 @@
 METHOD="dd"
 DIRECTORY=''
 MOUNT_DIR=''
-EC2_BACKUP_VOLUME=''
-EC2_BACKUP_INSTANCE=''
+VOLUME=''
+INSTANCE=''
 
 
 
@@ -32,7 +32,8 @@ EC2_BACKUP_INSTANCE=''
 ######################################
 #
 # execute backup dd/rsync
-#
+# trap CTRL-C signal
+function backup {
 
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
     echo "[INFO] Start backup process"
@@ -64,10 +65,25 @@ fi
 
 ssh $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo umount $MOUNT_DIR
 
-ec2-detach-volume $EC2_BACKUP_VOLUME -i $EC2_BACKUP_INSTANCE
+ec2-detach-volume $VOLUME -i $INSTANCE
+
+}
+
+trap backup 2
+#
+# backup work finished, print volume-id
+#
+
+echo $VOLUME
 
 #
 # terminal instance
 #
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    ec2-stop-instances $INSTANCE
+else
+    ec2-stop-instances $INSTANCE &>/dev/null
+fi
 
 
+exit 0
