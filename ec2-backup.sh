@@ -31,7 +31,7 @@ usage() {
 while getopts 'hm:v:' opt; do
    case ${opt} in
 	h)
-	  usage()
+	  usage
 	  ;;
 	m)
 	  METHOD=$OPTARG
