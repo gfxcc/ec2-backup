@@ -28,11 +28,11 @@ BACKUP_FLAG='--count 1 --instance-type t2.micro'
 #
 
 function CheckVolumeSize{
-   
-VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query '\
-    Volumes[*].[Size]' --output text)
 
-if [ $VOLUME_SIZE>= `expr $DIR_SIZE \\* 2` ];then
+VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query\
+    'Volumes[*].[Size]' --output text)
+
+if [ $VOLUME_SIZE -ge `expr $DIR_SIZE \\* 2` ];then
 
     AVAILABILITY_ZONE=$(aws ec2 describe-volumes --volume-ids \
         vol-15bea6cb --query 'Volumes[*].[AvailabilityZone]' \
@@ -41,7 +41,7 @@ if [ $VOLUME_SIZE>= `expr $DIR_SIZE \\* 2` ];then
 fi
 else
 
-exit 1
+    exit 1
 
 fi
 }
@@ -67,9 +67,9 @@ if [[ $EC2_BACKUP_FLAGS_AWS != "" ]]; then
         --output text --query 'Instances[*].InstanceId')
 fi
 else
-   INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID $BACKUP_FLAG \
-       --key-name CS615KEY --security-groups MY-SG --output text \
-       --query 'Instances[*].InstanceId')
+    INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID $BACKUP_FLAG \
+        --key-name CS615KEY --security-groups MY-SG --output text \
+        --query 'Instances[*].InstanceId')
 fi
 
 EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE --query \
@@ -80,11 +80,11 @@ EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE --query \
 aws ec2 attach-volume --volume-id $VOLUME --instance-id $INSTANCE \
     --device /dev/xvdf 
 
-ssh $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo mkfs -t ext4 /dev/xvdf  
+ssh $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo mkfs -t ext4 /dev/xvdf
 
 MOUNT_DIR='~/MOUNT'
 
-ssh $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo mount /dev/xvdf MOUNT_DIR 
+ssh $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo mount /dev/xvdf MOUNT_DIR
 ######################################
 #
 # created by YongCao (ycao18)
