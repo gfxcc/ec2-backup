@@ -79,7 +79,7 @@ if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
 fi
 
 if [[ $METHOD = "dd" ]]; then
-    DATE=`date +%F/%T`
+    DATE=`date +%F_%T`
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
         tar cvf $DIRECTORY | ssh $EC2_BACKUP_FLAGS_SSH \
             ubuntu@$EC2_HOST dd of=$MOUNT_DIR/$DATE obs=512k
