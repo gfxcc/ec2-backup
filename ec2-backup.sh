@@ -28,7 +28,7 @@ usage() {
   echo "usage: ec2-backup [i] [-m method] [-v volume-id] dir"
   exit 0
 }
-while getopts ':hmv' opt; do
+while getopts 'hm:v:' opt; do
    case ${opt} in
 	h)
 	  usage()
@@ -39,7 +39,9 @@ while getopts ':hmv' opt; do
 	v)
 	  VOLUME=$OPTARG
 	  ;;
-
+   esac
+done
+DIRECTORY=${@: -1}
 ####################################
 #
 #if -v is indicated, check the size of volume
