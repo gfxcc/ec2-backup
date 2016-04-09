@@ -16,6 +16,9 @@ IMAGE_ID=''
 VOLUME_SIZE=''
 DIR_SIZE=''
 EC2_HOST=''
+VISINDICATED=''
+BACKUP_FLAG='--count 1 --instance-type t2.micro'
+
 ####################################
 #
 #if -v is indicated, check the size of volume
@@ -23,6 +26,7 @@ EC2_HOST=''
 #
 #Created by Richard
 #
+
 function CheckVolumeSize{
    
 VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query 'Volumes[*].[Size]' --output text)
@@ -34,7 +38,7 @@ if [ $VOLUME_SIZE>= `expr $DIR_SIZE \\* 2` ];then
 fi
 else
 
-###Create new volume here###
+exit 1
 
 fi
 }
@@ -52,10 +56,10 @@ aws ec2 create-security-group --group-name MY-SG
 aws ec2 authorize-security-group-ingress --group-name MY-SG --port 22 --protocol tcp --cidr 0.0.0.0/0
 
 if [[ $EC2_BACKUP_FLAGS_AWS != "" ]]; then
-    INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID --count 1 $EC2_BACKUP_FLAGS_AWS --key-name CS615KEY --security-groups MY-SG --output text --query 'Instances[*].InstanceId')
+    INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID --count 1 $BACKUP_FLAG --key-name CS615KEY --security-groups MY-SG --output text --query 'Instances[*].InstanceId')
 fi
 else
-   INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID --count 1 --instance-type t2.micro --key-name CS615KEY --security-groups MY-SG --output text --query 'Instances[*].InstanceId')
+   INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID $BACKUP_FLAG --key-name CS615KEY --security-groups MY-SG --output text --query 'Instances[*].InstanceId')
 fi
 
 EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE --query 'Reservations[*].Instances[*].NetworkInterfaces.Association.PublicIp' --output text)
