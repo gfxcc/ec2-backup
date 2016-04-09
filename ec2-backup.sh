@@ -19,6 +19,27 @@ EC2_HOST=''
 VISINDICATED=''
 BACKUP_FLAG='--count 1 --instance-type t2.micro'
 
+#######################################
+#
+# Created by Jignesh
+#
+
+usage() {
+  echo "usage: ec2-backup [i] [-m method] [-v volume-id] dir"
+  exit 0
+}
+while getopts ':hmv' opt; do
+   case ${opt} in
+	h)
+	  usage()
+	  ;;
+	m)
+	  METHOD=$OPTARG
+	  ;;
+	v)
+	  VOLUME=$OPTARG
+	  ;;
+
 ####################################
 #
 #if -v is indicated, check the size of volume
