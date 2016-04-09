@@ -41,7 +41,7 @@ while getopts 'hm:v:' opt; do
 	  ;;
    esac
 done
-DIRECTORY=${@: -1}
+DIRECTORY='${@: -1}'
 ####################################
 #
 #if -v is indicated, check the size of volume
