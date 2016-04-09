@@ -41,7 +41,13 @@ while getopts 'hm:v:' opt; do
 	  ;;
    esac
 done
-DIRECTORY='${@: -1}'
+DIRECTORY=${@: -1}
+
+if [ ! -d "$DIRECTORY" ]; then
+	echo "${0}: ${DIRECTORY} No such directory" 	
+	exit 1
+fi
+
 ####################################
 #
 #if -v is indicated, check the size of volume
