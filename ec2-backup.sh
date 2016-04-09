@@ -43,6 +43,11 @@ while getopts 'hm:v:' opt; do
 done
 DIRECTORY=${@: -1}
 
+if [ -z $DIR ]; then
+	echo "${0}: No directory specified"
+	exit 1
+fi
+
 if [ ! -d "$DIRECTORY" ]; then
 	echo "${0}: ${DIRECTORY} No such directory" 	
 	exit 1
