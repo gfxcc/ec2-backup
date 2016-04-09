@@ -10,7 +10,7 @@ DIRECTORY=''
 MOUNT_DIR=''
 VOLUME=''
 INSTANCE=''
-REGION=''
+REGION=$(cat ~/.aws/config | grep "region" | sed 's/region = //g')
 AVAILABILITY_ZONE=''
 IMAGE_ID=''
 VOLUME_SIZE=''
