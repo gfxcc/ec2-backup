@@ -35,7 +35,7 @@ VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query\
 if [ $VOLUME_SIZE -ge `expr $DIR_SIZE \\* 2` ];then
 
     AVAILABILITY_ZONE=$(aws ec2 describe-volumes --volume-ids \
-        vol-15bea6cb --query 'Volumes[*].[AvailabilityZone]' \
+        $VOLUME --query 'Volumes[*].[AvailabilityZone]' \
         --output text)
 
 fi
@@ -48,11 +48,11 @@ fi
 
 function CreateInstance{
 
-declare -a INSTANCEID
-
-INSTANCEID=('ami-fce3c696' 'ami-06116566' 'ami-9abea4fb' 'ami-f95ef58a\
-    ' 'ami-87564feb' 'ami-a21529cc' 'ami-09dc1267' 'ami-25c00c46' '\
-    ami-6c14310f' 'ami-0fb83963')
+INSTANCEID=('ami-fce3c696' 'ami-06116566'\
+            'ami-9abea4fb' 'ami-f95ef58a'\
+            'ami-87564feb' 'ami-a21529cc'\
+            'ami-09dc1267' 'ami-25c00c46'\
+            'ami-6c14310f' 'ami-0fb83963')
 
 aws ec2 create-key-pair --key-name CS615KEY
 
@@ -64,12 +64,13 @@ aws ec2 authorize-security-group-ingress --group-name MY-SG --port 22 \
 if [[ $EC2_BACKUP_FLAGS_AWS != "" ]]; then
     INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID --count 1 \
         $BACKUP_FLAG --key-name CS615KEY --security-groups MY-SG \
-        --output text --query 'Instances[*].InstanceId')
+        --availability-zone $AVAILABILITY_ZONE  --output text --query\
+        'Instances[*].InstanceId')
 fi
 else
     INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID $BACKUP_FLAG \
-        --key-name CS615KEY --security-groups MY-SG --output text \
-        --query 'Instances[*].InstanceId')
+        --key-name CS615KEY --security-groups MY-SG --availability-zone\
+        $AVAILABILITY_ZONE --output text --query 'Instances[*].InstanceId')
 fi
 
 EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE --query \
