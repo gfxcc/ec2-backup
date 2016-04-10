@@ -97,7 +97,7 @@ exit 0
 
 create_volume () {
     AVAILABILITY_ZONE=$REGION"a"
-    VOLUME_ID=$(aws ec2 create-volume --size $VOLUME_SIZE --availability-zone $AVAILABILITY_ZONE --volume-type gp2 --output text --query 'Volumes[*].[VolumeId]' )
+    VOLUME_ID=$(aws ec2 create-volume --size $VOLUME_SIZE --availability-zone $AVAILABILITY_ZONE --volume-type gp2 --output text | awk '{print $7}')
 
     if [[ "$VOLUME_ID" = "" ]]; then
         echo "Failed to create volume"
