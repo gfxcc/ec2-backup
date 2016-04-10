@@ -75,8 +75,15 @@ fi
 
 
 create_volume () {
+   DIR_SIZE='du -hc ${DIRECTORY} | grep "total" | awk '{print $1}''
+   if [[ "$DIR_SIZE" == * ]]; then
+	DIR_SIZE="1"
+   fi
 
-    exit 0
+   if [[ "$DIR_SIZE" == *G ]]; then
+	DIR_SIZE='echo ${DIR_SIZE} | tr -cd "[0-9]."'
+   fi
+
 }
 ####################################
 #
