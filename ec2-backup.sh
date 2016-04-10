@@ -25,47 +25,52 @@ BACKUP_FLAG='--count 1 --instance-type t2.micro'
 #
 
 usage() {
-  echo "usage: ec2-backup [-h] [-m method] [-v volume-id] dir"
-  echo "-m valid methods are 'dd' and 'rsync'; default is 'dd'"
-  echo "-v use given volume instead of creating a new one"
-  echo "ENVIRONMENT EC2_BACKUP_VERBOSE		enable verbose mode"
-  echo "            EC2_BACKUP_FLAGS_AWS	add custom flags for instanace"
-  echo "            EC2_BACKUP_FLAGS_SSH	indicate ssh file"
-  exit 0
+    echo "usage: ec2-backup [-h] [-m method] [-v volume-id] dir"
+    echo "	-m valid methods are 'dd' and 'rsync'; default is 'dd'"
+    echo "	-v use given volume instead of creating a new one"
+    echo "	ENVIRONMENT	EC2_BACKUP_VERBOSE	enable verbose mode"
+    echo "			EC2_BACKUP_FLAGS_AWS	add custom flags for instanace"
+    echo "			EC2_BACKUP_FLAGS_SSH	indicate ssh file"
+    exit 0
 }
-while getopts 'hm:v:' opt; do
-   case ${opt} in
-	h)
-	  usage
-	  ;;
-	m)
-	  METHOD=$OPTARG
-	  ;;
-	v)
-	  VOLUME=$OPTARG
-	  ;;
-   esac
 
-DIRECTORY=${@: -1}
+while getopts 'hm:v:' opt; do
+    case ${opt} in
+        h)
+            usage
+            ;;
+        m)
+            METHOD=$OPTARG
+            ;;
+        v)
+            VOLUME=$OPTARG
+            ;;
+    esac
+done
+
+# get last argument
+#
+for last; do true; done
+DIRECTORY=$last
 
 if [ $# -eq 0 ]; then
-	usage
-	exit 1
+    usage
+    exit 1
 fi
 
-if [ -n "$METHOD" -a "$METHOD" != "dd" -a "$METHOD" != "rsync" ]; then
-	echo "${0}: Valid methods are 'dd' and 'rsync'; default is 'dd'."
-	exit 1
+if [[ -n "$METHOD" -a "$METHOD" != "dd" -a "$METHOD" != "rsync" ]]; then
+    echo "${0}: Valid methods are 'dd' and 'rsync'; default is 'dd'."
+    exit 1
 fi
 
 if [ -z $DIR ]; then
-	echo "${0}: No directory specified"
-	exit 1
+    echo "${0}: No directory specified"
+    exit 1
 fi
 
 if [ ! -d "$DIRECTORY" ]; then
-	echo "${0}: ${DIRECTORY} No such directory" 	
-	exit 1
+    echo "${0}: ${DIRECTORY} No such directory" 	
+    exit 1
 fi
 
 ####################################
@@ -76,9 +81,10 @@ fi
 #Created by Richard
 #
 
-function CheckVolumeSize{
+function CheckVolumeSize {
 
-VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query 'Volumes[*].[Size]' --output text)
+VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query \
+    'Volumes[*].[Size]' --output text)
 
 if [ $VOLUME_SIZE -ge `expr $DIR_SIZE \\* 2` ];then
 
@@ -86,21 +92,18 @@ if [ $VOLUME_SIZE -ge `expr $DIR_SIZE \\* 2` ];then
         $VOLUME --query 'Volumes[*].[AvailabilityZone]' \
         --output text)
 
-fi
 else
-
     exit 1
-
 fi
 }
 
 function CreateInstance{
 
 INSTANCEID=('ami-fce3c696' 'ami-06116566'\
-            'ami-9abea4fb' 'ami-f95ef58a'\
-            'ami-87564feb' 'ami-a21529cc'\
-            'ami-09dc1267' 'ami-25c00c46'\
-            'ami-6c14310f' 'ami-0fb83963')
+    'ami-9abea4fb' 'ami-f95ef58a'\
+    'ami-87564feb' 'ami-a21529cc'\
+    'ami-09dc1267' 'ami-25c00c46'\
+    'ami-6c14310f' 'ami-0fb83963')
 
 aws ec2 create-key-pair --key-name CS615KEY
 
