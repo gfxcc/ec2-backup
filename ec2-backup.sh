@@ -95,7 +95,13 @@ DIR_SIZE="$(du -hc ${DIRECTORY} | grep "total" | awk '{print $1}')"
    fi
 
 create_volume () {
+ AVAILABILITY_ZONE=$REGION"a"
+ VOLUME_ID=$(aws ec2 create-volume --size $VOLUME_SIZE --availability-zone $AVAILABILITY_ZONE --volume-type gp2 --output text --query 'Volumes[*].[VolumeId]' )
 
+  if [[ "$VOLUME_ID" = "" ]]; then
+	echo "Failed to create volume"
+	exit 1;
+  if
 }
 ####################################
 #
