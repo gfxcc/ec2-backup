@@ -25,7 +25,7 @@ BACKUP_FLAG='--count 1 --instance-type t2.micro'
 #
 
 usage() {
-  echo "usage: ec2-backup [i] [-m method] [-v volume-id] dir"
+  echo "usage: ec2-backup [-h] [-m method] [-v volume-id] dir"
   exit 0
 }
 while getopts 'hm:v:' opt; do
@@ -40,8 +40,18 @@ while getopts 'hm:v:' opt; do
 	  VOLUME=$OPTARG
 	  ;;
    esac
-done
+
 DIRECTORY=${@: -1}
+
+if [ $# -eq 0 ]; then
+	usage
+	exit 1
+fi
+
+if [ -n "$METHOD" -a "$METHOD" != "dd" -a "$METHOD" != "rsync" ]; then
+	echo "${0}: Valid methods are 'dd' and 'rsync'; default is 'dd'."
+	exit 1
+fi
 
 if [ -z $DIR ]; then
 	echo "${0}: No directory specified"
