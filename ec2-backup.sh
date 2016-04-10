@@ -26,6 +26,11 @@ BACKUP_FLAG='--count 1 --instance-type t2.micro'
 
 usage() {
   echo "usage: ec2-backup [-h] [-m method] [-v volume-id] dir"
+  echo "-m valid methods are 'dd' and 'rsync'; default is 'dd'"
+  echo "-v use given volume instead of creating a new one"
+  echo "ENVIRONMENT EC2_BACKUP_VERBOSE		enable verbose mode"
+  echo "            EC2_BACKUP_FLAGS_AWS	add custom flags for instanace"
+  echo "            EC2_BACKUP_FLAGS_SSH	indicate ssh file"
   exit 0
 }
 while getopts 'hm:v:' opt; do
@@ -73,8 +78,7 @@ fi
 
 function CheckVolumeSize{
 
-VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query\
-    'Volumes[*].[Size]' --output text)
+VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query 'Volumes[*].[Size]' --output text)
 
 if [ $VOLUME_SIZE -ge `expr $DIR_SIZE \\* 2` ];then
 
