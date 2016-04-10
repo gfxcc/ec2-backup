@@ -91,7 +91,8 @@ check_volume () {
     VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query \
         'Volumes[*].[Size]' --output text)
 
-    if [ $VOLUME_SIZE -ge `expr $DIR_SIZE \\* 2` ];then
+
+    if [ $VOLUME_SIZE -ge `expr $DIR_SIZE \* 2` ];then
 
         AVAILABILITY_ZONE=$(aws ec2 describe-volumes --volume-ids \
             $VOLUME --query 'Volumes[*].[AvailabilityZone]' \
