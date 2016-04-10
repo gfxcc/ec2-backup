@@ -58,12 +58,12 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-if [[ -n "$METHOD" -a "$METHOD" != "dd" -a "$METHOD" != "rsync" ]]; then
+if [ -n "$METHOD" -a "$METHOD" != "dd" -a "$METHOD" != "rsync" ]; then
     echo "${0}: Valid methods are 'dd' and 'rsync'; default is 'dd'."
     exit 1
 fi
 
-if [ -z $DIR ]; then
+if [ -z $DIRECTORY ]; then
     echo "${0}: No directory specified"
     exit 1
 fi
