@@ -73,35 +73,36 @@ if [ ! -d "$DIRECTORY" ]; then
     exit 1
 fi
 
-DIR_SIZE="$(du -hc ${DIRECTORY} | grep "total" | awk '{print $1}')"
+#
+# transfer K, M to G
+#
+DIR_SIZE="$(du -sh ${DIRECTORY} | awk '{print $1}')"
 
-   div=1024
-   if [[ "$DIR_SIZE" == *K ]]; then
-        DIR_SIZE="$(echo ${DIR_SIZE} | tr -cd "[0-9].")"
+if [[ $DIR_SIZE = *K ]]; then
+    DIR_SIZE=$(echo ${DIR_SIZE} | tr -cd "[0-9].")
 
-        DIR_SIZE=$(($DIR_SIZE/$div))
-        DIR_SIZE=$(($DIR_SIZE/$div))
-        echo "KB $DIR_SIZE"
-   else
-      if [[ "$DIR_SIZE" == *M ]]; then
-        DIR_SIZE="$(echo ${DIR_SIZE} | tr -cd "[0-9].")"
-        echo "MB $DIR_SIZE"
-   if [[ "$DIR_SIZE" == *G ]]; then
-        DIR_SIZE="$(echo ${DIR_SIZE} | tr -cd "[0-9].")"
-        echo "GB $DIR_SIZE"
+    DIR_SIZE=$(echo $DIR_SIZE '/' 1024 | bc -l)
+    #DIR_SIZE=`$DIR_SIZE '/' 1024 | bc -l`
+    echo $DIR_SIZE
+elif [[ $DIR_SIZE = *M ]]; then
+    DIR_SIZE="$(echo ${DIR_SIZE} | tr -cd "[0-9].")"
+    echo "MB $DIR_SIZE"
+elif [[ $DIR_SIZE = *G ]]; then
+    DIR_SIZE="$(echo ${DIR_SIZE} | tr -cd "[0-9].")"
+    echo "GB $DIR_SIZE"
 
-     fi
-    fi
-   fi
+fi
+
+exit 0
 
 create_volume () {
- AVAILABILITY_ZONE=$REGION"a"
- VOLUME_ID=$(aws ec2 create-volume --size $VOLUME_SIZE --availability-zone $AVAILABILITY_ZONE --volume-type gp2 --output text --query 'Volumes[*].[VolumeId]' )
+    AVAILABILITY_ZONE=$REGION"a"
+    VOLUME_ID=$(aws ec2 create-volume --size $VOLUME_SIZE --availability-zone $AVAILABILITY_ZONE --volume-type gp2 --output text --query 'Volumes[*].[VolumeId]' )
 
-  if [[ "$VOLUME_ID" = "" ]]; then
-	echo "Failed to create volume"
-	exit 1;
-  if
+    if [[ "$VOLUME_ID" = "" ]]; then
+        echo "Failed to create volume"
+        exit 1;
+    fi
 }
 ####################################
 #
@@ -110,7 +111,6 @@ create_volume () {
 #
 #Created by Richard
 #
-
 check_volume () {
 
     VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query \
