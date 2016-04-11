@@ -45,3 +45,10 @@
         +-----------+
         |    END    |
         +-----------+
+
+Trap CTRL + C [Function defined]
+-> Delete key pair, if created.
+-> Delete the security group, if created.
+-> Check if volume indicated, is attached, if yes - detach it.
+-> Check if any volume created, if yes - check if it is mounted, if yes unmount it and delete it.
+-> Check if any instance is running, if yes terminate it.
