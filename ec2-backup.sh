@@ -20,11 +20,13 @@ DIR_SIZE=''
 EC2_HOST=''
 VISINDICATED=''
 BACKUP_FLAG='--instance-type t2.micro'
+GIVEN_VOLUME_MODE=''
 
 clean () {
     if [[ $INSTANCE != "" ]]; then
         aws ec2 terminate-instances --instance-ids $INSTANCE &>/dev/null
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+            echo "[run]	clean process"
             echo "[ok]	terminate instance"
         fi
     fi
@@ -45,11 +47,22 @@ clean () {
             while [ 1 ]; do
                 aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
                 if [ $? -eq 0 ]; then
-                    echo "[ok]	delete security group"
+                    if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+                        echo "[ok]	delete security group"
+                    fi
                     break;
                 fi
                 sleep 10
             done
+        fi
+    fi
+
+    if [ $1 -ne 0 ]; then
+        if [[ $GIVEN_VOLUME_MODE != "" ]]; then
+            if [[ $VOLUME_ID != "" ]]; then
+                aws ec2 delete-volume --volume-id $VOLUME_ID &>/dev/null
+                echo "[ok] delete volume $VOLUME_ID"
+            fi
         fi
     fi
 }
@@ -57,7 +70,7 @@ clean () {
 trap ctrl_c INT
 
 ctrl_c () {
-    clean
+    clean 130
     exit 130
 }
 
@@ -81,6 +94,7 @@ while getopts 'hm:v:' opt; do
             METHOD=$OPTARG
             ;;
         v)
+            GIVEN_VOLUME_MODE="YES"
             VOLUME_ID=$OPTARG
             ;;
     esac
@@ -155,7 +169,7 @@ create_volume () {
 
     if [[ "$VOLUME_ID" = "" ]]; then
         echo "Failed to create volume"
-        clean
+        clean 1
         exit 1;
     fi
 
@@ -181,7 +195,7 @@ check_volume () {
 
     if [[ $VOLUME_SIZE = "" ]]; then
         echo "[error]	invalid volume-id"
-        clean
+        clean 1
         exit 1
     fi
 
@@ -192,7 +206,7 @@ check_volume () {
             --output text)
     else
         echo "[error]	it require larger volume"
-        clean
+        clean 1
         exit 1
     fi
 
@@ -274,7 +288,7 @@ fi
 
 if [[ $? -ne 0 ]]; then
     echo "[ERROR]	failed to create instance"
-    clean
+    clean 1
     exit 1
 fi
 
@@ -404,7 +418,7 @@ fi
 # terminal instance
 #
 
-clean
+clean 0
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
     echo "[successed]	volume-id:$VOLUME_ID"
 fi
