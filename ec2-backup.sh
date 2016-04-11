@@ -21,6 +21,7 @@ EC2_HOST=''
 VISINDICATED=''
 BACKUP_FLAG='--instance-type t2.micro'
 GIVEN_VOLUME_MODE=''
+INVALID_VOLUME=''
 
 clean () {
     if [[ $INSTANCE != "" ]]; then
@@ -58,7 +59,7 @@ clean () {
     fi
 
     if [ $1 -ne 0 ]; then
-        if [[ $GIVEN_VOLUME_MODE != "" ]]; then
+        if [[ $GIVEN_VOLUME_MODE = "" ]]; then
             if [[ $VOLUME_ID != "" ]]; then
                 aws ec2 delete-volume --volume-id $VOLUME_ID &>/dev/null
                 echo "[ok] delete volume $VOLUME_ID"
@@ -203,7 +204,7 @@ check_volume () {
 
         AVAILABILITY_ZONE=$(aws ec2 describe-volumes --volume-ids \
             $VOLUME_ID --query 'Volumes[*].[AvailabilityZone]' \
-            --output text)
+            --output text) &>/dev/null
     else
         echo "[error]	it require larger volume"
         clean 1
