@@ -260,7 +260,8 @@ if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
     fi
     EC2_BACKUP_FLAGS_SSH="-i $HOME/ec2_backup_KP.pem"
 else
-    KEY_PAIR_NAME=
+    KEY_PAIR_NAME=$(awk '{print $2}' <<< $EC2_BACKUP_FLAG_SSH)
+    KEY_PAIR_NAME=$(basename $KEY_PAIR_NAME)
 fi
 
 chmod 700 $HOME/ec2_backup_KP.pem
