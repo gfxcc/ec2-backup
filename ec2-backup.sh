@@ -21,7 +21,6 @@ EC2_HOST=''
 VISINDICATED=''
 BACKUP_FLAG='--instance-type t2.micro'
 GIVEN_VOLUME_MODE=''
-INVALID_VOLUME=''
 
 clean () {
     if [[ $INSTANCE != "" ]]; then
@@ -34,6 +33,7 @@ clean () {
 
     if [[ $KEY_PAIR_NAME != "" ]]; then
         aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
+        rm $HOME/ec2_backup_KP.pem
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
             echo "[ok]	delete key-pair"
             echo "[run]	wait for deleting security group, it might takes 30 seconds"
@@ -62,7 +62,7 @@ clean () {
         if [[ $GIVEN_VOLUME_MODE = "" ]]; then
             if [[ $VOLUME_ID != "" ]]; then
                 aws ec2 delete-volume --volume-id $VOLUME_ID &>/dev/null
-                echo "[ok] delete volume $VOLUME_ID"
+                echo "[ok]	delete volume $VOLUME_ID"
             fi
         fi
     fi
@@ -190,9 +190,9 @@ check_volume () {
     fi
 
     aws ec2 detach-volume --volume-id $VOLUME_ID &>/dev/null
-
+    
     VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME_ID \
-        --query 'Volumes[*].[Size]' --output text) &>/dev/null
+        --query 'Volumes[*].[Size]' --output text &>/dev/null)
 
     if [[ $VOLUME_SIZE = "" ]]; then
         echo "[error]	invalid volume-id"
@@ -251,13 +251,17 @@ else
     IMAGE_ID=${IMAGE_IDs[9]}
 fi
 
-KEY_PAIR_NAME="ec2_backup_KP"`date +%F_%T`
-aws ec2 create-key-pair --key-name $KEY_PAIR_NAME --query 'KeyMaterial' --output text > $HOME/ec2_backup_KP.pem
+if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
+    KEY_PAIR_NAME="ec2_backup_KP"`date +%F_%T`
+    aws ec2 create-key-pair --key-name $KEY_PAIR_NAME --query 'KeyMaterial' --output text > $HOME/ec2_backup_KP.pem
 
-if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    echo "[OK]	key-pair $KEY_PAIR_NAME was created"
+    if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+        echo "[OK]	key-pair $KEY_PAIR_NAME was created"
+    fi
+    EC2_BACKUP_FLAGS_SSH="-i $HOME/ec2_backup_KP.pem"
+else
+    KEY_PAIR_NAME=
 fi
-
 
 chmod 700 $HOME/ec2_backup_KP.pem
 
@@ -314,7 +318,13 @@ if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
     echo "[run]	waiting for instance, it might takes 20 seconds"
 fi
 
+limite=0
 while [ 1 ]; do
+    if [ $limite -gt 50 ]; then
+        echo "[error] fail to ssh 50 times, please check key-pair, network"
+        clean 1
+        exit 1
+    fi
     STATUE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
         --output text --query 'Reservations[*].Instances[*].State[*].Name')
     if [[ $STATUE = "running" ]]; then
@@ -323,6 +333,7 @@ while [ 1 ]; do
         fi
         break
     fi
+    limite=`expr $limite + 1`
     sleep 1
 done
 
@@ -332,9 +343,6 @@ if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
     echo "[OK]	volume $VOLUME_ID has been attached on instance $INSTANCE"
 fi
 
-if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
-    EC2_BACKUP_FLAGS_SSH="-i $HOME/ec2_backup_KP.pem"
-fi
 
 MOUNT_DIR='/home/ubuntu/mount_point'
 
