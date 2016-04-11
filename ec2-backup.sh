@@ -200,7 +200,7 @@ if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
     aws ec2 create-security-group --group-name $SECURITY_GROUP_NAME \
         --description "ec2_backup_security_group"
 else
-    aws ec2 create_security-group --group-name $SECURITY_GROUP_NAME \
+    aws ec2 create-security-group --group-name $SECURITY_GROUP_NAME \
         --description "ec2_backup_security_group" &>/dev/null
 fi
 
@@ -232,7 +232,7 @@ if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
     echo "Instance "$INSTANCE" was created"
 fi
 
-
+echo hi
 if [[ $VOLUME != "" ]]; then
     check_volume
 else
@@ -262,20 +262,29 @@ if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
     EC2_BACKUP_FLAGS_SSH="-i $HOME/ec2_backup_KP.pem"
 fi
 
-MOUNT_DIR='/home/ubuntu/MOUNT'
+MOUNT_DIR='/home/ubuntu/mount_point'
 
 echo "ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST "sudo mkfs -t ext4 /dev/xvdf""
 
 # do while because ssh command may rejected
-exit_code=1
-while [ $exit_code -ne 0 ]; do
+while [ 1 ]; do
     ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
-        "sudo mkfs -t ext4 /dev/xvdf && sudo mkdir $MOUNT_DIR && \
-        sudo mount /dev/xvdf $MOUNT_DIR"
-    exit_code=$?
+        "sudo mkfs -t ext4 /dev/xvdf"
+
+    if [ $? -eq 0 ]; then
+        break
+    fi
     sleep 1
 done
 
+ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
+    "sudo mkdir $MOUNT_DIR"
+
+ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
+    "sudo mount /dev/xvdf $MOUNT_DIR"
+
+ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
+    "sudo chown ubuntu $MOUNT_DIR"
 ######################################
 #
 # created by YongCao (ycao18)
@@ -290,10 +299,10 @@ backup () {
     if [[ $METHOD = "dd" ]]; then
         DATE=`date +%F_%T`
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-            tar cvf $DIRECTORY | ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH \
+            tar cf - $DIRECTORY | ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH \
                 ubuntu@$EC2_HOST dd of=$MOUNT_DIR/$DATE obs=512k
         else
-            tar cf $DIRECTORY &>/dev/null | ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH \
+            tar cf - $DIRECTORY | ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH \
                 ubuntu@$EC2_HOST dd of=$MOUNT_DIR/$DATE obs=512k &>/dev/null
         fi
     fi
@@ -301,11 +310,9 @@ backup () {
     if [[ $METHOD = "rsync" ]]; then
 
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-            rsync -avRc -e "ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu\
-                @$EC2_HOST:$MOUNT_DIR
+            rsync -aRc -e "ssh -o StrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu@$EC2_HOST:$MOUNT_DIR
         else
-            rsync -aRc -e "ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu\
-                @$EC2_HOST:$MOUNT_DIR &>/dev/null
+            rsync -aRc -e "ssh -o StrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu@$EC2_HOST:$MOUNT_DIR &>/dev/null
         fi
     fi
 
@@ -313,7 +320,7 @@ backup () {
 
     ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo umount $MOUNT_DIR
 
-    ec2-detach-volume $VOLUME_ID -i $INSTANCE
+    aws ec2 detach-volume --volume-id $VOLUME_ID
 
 }
 
@@ -327,12 +334,28 @@ echo $VOLUME_ID
 #
 # terminal instance
 #
+SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --group-name $SECURITY_GROUP_NAME --query 'SecurityGroups[*].GroupId' --output text)
+
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    ec2-stop-instances $INSTANCE
-
+    aws ec2 terminate-instances --instance-ids $INSTANCE
+    aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME
+    while [ 1 ]; do
+        aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
+        if [ $? -eq 0 ]; then
+            break;
+        fi
+        sleep 10
+    done
 else
-    ec2-stop-instances $INSTANCE &>/dev/null
+    aws ec2 terminate-instances --instance-ids $INSTANCE &>/dev/null
+    aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
+    while [ 1 ]; do
+        aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
+        if [ $? -eq 0 ]; then
+            break;
+        fi
+        sleep 10
+    done
 fi
-
 
 exit 0
