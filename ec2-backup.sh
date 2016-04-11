@@ -8,7 +8,7 @@
 METHOD="dd"
 DIRECTORY=''
 MOUNT_DIR=''
-VOLUME=''
+VOLUME_ID=''
 INSTANCE=''
 KEY_PAIR_NAME=''
 SECURITY_GROUP_NAME=''
@@ -59,7 +59,7 @@ while getopts 'hm:v:' opt; do
             METHOD=$OPTARG
             ;;
         v)
-            VOLUME=$OPTARG
+            VOLUME_ID=$OPTARG
             ;;
     esac
 done
@@ -140,14 +140,14 @@ create_volume () {
 #
 check_volume () {
 
-    VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME \
+    VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME_ID \
         --query 'Volumes[*].[Size]' --output text)
 
 
     if [ $VOLUME_SIZE -ge `expr $DIR_SIZE \* 2` ];then
 
         AVAILABILITY_ZONE=$(aws ec2 describe-volumes --volume-ids \
-            $VOLUME --query 'Volumes[*].[AvailabilityZone]' \
+            $VOLUME_ID --query 'Volumes[*].[AvailabilityZone]' \
             --output text)
 
     else
@@ -160,12 +160,12 @@ check_volume () {
 # create instance
 #
 IMAGE_IDs=(
-        'ami-fce3c696' 'ami-06116566'
-        'ami-9abea4fb' 'ami-f95ef58a'
-        'ami-87564feb' 'ami-a21529cc'
-        'ami-09dc1267' 'ami-25c00c46'
-        'ami-6c14310f' 'ami-0fb83963'
-        )
+'ami-fce3c696' 'ami-06116566'
+'ami-9abea4fb' 'ami-f95ef58a'
+'ami-87564feb' 'ami-a21529cc'
+'ami-09dc1267' 'ami-25c00c46'
+'ami-6c14310f' 'ami-0fb83963'
+)
 
 if [[ $REGION = "us-east-1" ]]; then
     IMAGE_ID=${IMAGE_IDs[0]}
@@ -190,7 +190,9 @@ else
 fi
 
 KEY_PAIR_NAME="ec2_backup_KP"`date +%F_%T`
-aws ec2 create-key-pair --key-name $KEY_PAIR_NAME > ~/ec2_backup_KP.pem
+aws ec2 create-key-pair --key-name $KEY_PAIR_NAME --query 'KeyMaterial' --output text > $HOME/ec2_backup_KP.pem
+
+chmod 700 $HOME/ec2_backup_KP.pem
 
 SECURITY_GROUP_NAME="ec2_backup_security_group"`date +%F_%T`
 
@@ -207,7 +209,7 @@ if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
         $SECURITY_GROUP_NAME --port 22 --protocol tcp --cidr 0.0.0.0/0
 else
     aws ec2 authorize-security-group-ingress --group-name \
-         $SECURITY_GROUP_NAME --port 22 --protocol tcp --cidr 0.0.0.0/0 &>/dev/null
+        $SECURITY_GROUP_NAME --port 22 --protocol tcp --cidr 0.0.0.0/0 &>/dev/null
 fi
 
 echo "ID="$IMAGE_ID
@@ -245,7 +247,7 @@ echo $EC2_HOST
 
 while [ 1 ]; do
     STATUE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
-    --output text --query 'Reservations[*].Instances[*].Status[*].Name')
+        --output text --query 'Reservations[*].Instances[*].State[*].Name')
     echo $STATUE
     if [[ $STATUE = "running" ]]; then
         break
@@ -253,15 +255,26 @@ while [ 1 ]; do
     sleep 1
 done
 
-aws ec2 attach-volume --volume-id $VOLUME --instance-id $INSTANCE \
+aws ec2 attach-volume --volume-id $VOLUME_ID --instance-id $INSTANCE \
     --device /dev/xvdf
 
-ssh $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo mkfs -t ext4 /dev/xvdf
+if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
+    EC2_BACKUP_FLAGS_SSH="-i $HOME/ec2_backup_KP.pem"
+fi
 
-MOUNT_DIR='~/MOUNT'
+MOUNT_DIR='/home/ubuntu/MOUNT'
 
-ssh $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo mount /dev/xvdf MOUNT_DIR
+echo "ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST "sudo mkfs -t ext4 /dev/xvdf""
 
+# do while because ssh command may rejected
+exit_code=1
+while [ $exit_code -ne 0 ]; do
+    ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
+        "sudo mkfs -t ext4 /dev/xvdf && sudo mkdir $MOUNT_DIR && \
+        sudo mount /dev/xvdf $MOUNT_DIR"
+    exit_code=$?
+    sleep 1
+done
 
 ######################################
 #
@@ -274,17 +287,13 @@ backup () {
         echo "[INFO] Start backup process"
     fi
 
-    if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
-        EC2_BACKUP_FLAGS_SSH="~/ec2_backup_KP"
-    if
-
     if [[ $METHOD = "dd" ]]; then
         DATE=`date +%F_%T`
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-            tar cvf $DIRECTORY | ssh $EC2_BACKUP_FLAGS_SSH \
+            tar cvf $DIRECTORY | ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH \
                 ubuntu@$EC2_HOST dd of=$MOUNT_DIR/$DATE obs=512k
         else
-            tar cf $DIRECTORY &>/dev/null | ssh $EC2_BACKUP_FLAGS_SSH \
+            tar cf $DIRECTORY &>/dev/null | ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH \
                 ubuntu@$EC2_HOST dd of=$MOUNT_DIR/$DATE obs=512k &>/dev/null
         fi
     fi
@@ -292,28 +301,28 @@ backup () {
     if [[ $METHOD = "rsync" ]]; then
 
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-            rsync -avRc -e "ssh $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu\
+            rsync -avRc -e "ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu\
                 @$EC2_HOST:$MOUNT_DIR
         else
-            rsync -aRc -e "ssh $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu\
+            rsync -aRc -e "ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu\
                 @$EC2_HOST:$MOUNT_DIR &>/dev/null
         fi
     fi
 
     ###
 
-    ssh $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo umount $MOUNT_DIR
+    ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo umount $MOUNT_DIR
 
-    ec2-detach-volume $VOLUME -i $INSTANCE
+    ec2-detach-volume $VOLUME_ID -i $INSTANCE
 
 }
 
-trap backup 2
+backup
 #
 # backup work finished, print volume-id
 #
 
-echo $VOLUME
+echo $VOLUME_ID
 
 #
 # terminal instance
