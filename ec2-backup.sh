@@ -117,7 +117,7 @@ create_volume () {
         VOLUME_SIZE=${VOLUME_SIZE.*}
         VOLUME_SIZE=$(expr $VOLUME + 1)
     fi
-
+    echo $AVAILABILITY_ZONE
     VOLUME_ID=$(aws ec2 create-volume --size $VOLUME_SIZE \
         --availability-zone $AVAILABILITY_ZONE --volume-type \
         gp2 --output text | awk '{print $7}')
@@ -224,12 +224,10 @@ else
 fi
 
 AVAILABILITY_ZONE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
-    --output text --query 'Reservations[*].Instances[*].Placement[*].\
-    Availability')
+    --output text --query 'Reservations[*].Instances[*].Placement[*].AvailabilityZone')
 
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
     echo "Instance "$INSTANCE" was created"
-    echo $INSTANCE
 fi
 
 
@@ -241,10 +239,20 @@ fi
 
 
 EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE \
-    --output text --query 'Reservations[*].Instances[*].\
-    NetworkInterfaces.Association.PublicIp')
+    --output text --query 'Reservations[*].Instances[*].NetworkInterfaces.Association.PublicIp')
+
 echo $EC2_HOST
-exit 0
+
+while [ 1 ]; do
+    STATUE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
+    --output text --query 'Reservations[*].Instances[*].Status[*].Name')
+    echo $STATUE
+    if [[ $STATUE = "running" ]]; then
+        break
+    fi
+    sleep 1
+done
+
 aws ec2 attach-volume --volume-id $VOLUME --instance-id $INSTANCE \
     --device /dev/xvdf
 
