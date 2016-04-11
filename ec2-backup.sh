@@ -89,6 +89,10 @@ if [ ! -d "$DIRECTORY" ]; then
     exit 1
 fi
 
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "[OK]	argument check"
+fi
+
 #
 # transfer K, M to G
 #
@@ -108,6 +112,11 @@ elif [[ $DIR_SIZE = *G ]]; then
 
 fi
 
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "[OK]	backup directory $DIRECTORY $DIR_SIZE GB"
+fi
+
+
 create_volume () {
     VOLUME_SIZE=$(echo $DIR_SIZE '*' 2 | bc -l)
 
@@ -117,7 +126,6 @@ create_volume () {
         VOLUME_SIZE=${VOLUME_SIZE.*}
         VOLUME_SIZE=$(expr $VOLUME + 1)
     fi
-    echo $AVAILABILITY_ZONE
     VOLUME_ID=$(aws ec2 create-volume --size $VOLUME_SIZE \
         --availability-zone $AVAILABILITY_ZONE --volume-type \
         gp2 --output text | awk '{print $7}')
@@ -128,7 +136,7 @@ create_volume () {
     fi
 
     if [[ $EC2_BACKUP_VERBOSE != ""  ]]; then
-        echo "volume "$VOLUME_ID" was created"
+        echo "[OK]	volume $VOLUME_ID was created"
     fi
 }
 ####################################
@@ -192,27 +200,27 @@ fi
 KEY_PAIR_NAME="ec2_backup_KP"`date +%F_%T`
 aws ec2 create-key-pair --key-name $KEY_PAIR_NAME --query 'KeyMaterial' --output text > $HOME/ec2_backup_KP.pem
 
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "[OK]	key-pair $KEY_PAIR_NAME was created"
+fi
+
+
 chmod 700 $HOME/ec2_backup_KP.pem
 
 SECURITY_GROUP_NAME="ec2_backup_security_group"`date +%F_%T`
 
+aws ec2 create-security-group --group-name $SECURITY_GROUP_NAME \
+    --description "ec2_backup_security_group" &>/dev/null
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    aws ec2 create-security-group --group-name $SECURITY_GROUP_NAME \
-        --description "ec2_backup_security_group"
-else
-    aws ec2 create-security-group --group-name $SECURITY_GROUP_NAME \
-        --description "ec2_backup_security_group" &>/dev/null
+    echo "[OK]	security group $SECURITY_GROUP_NAME was created"
 fi
 
+aws ec2 authorize-security-group-ingress --group-name \
+    $SECURITY_GROUP_NAME --port 22 --protocol tcp --cidr 0.0.0.0/0 &>/dev/null
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    aws ec2 authorize-security-group-ingress --group-name \
-        $SECURITY_GROUP_NAME --port 22 --protocol tcp --cidr 0.0.0.0/0
-else
-    aws ec2 authorize-security-group-ingress --group-name \
-        $SECURITY_GROUP_NAME --port 22 --protocol tcp --cidr 0.0.0.0/0 &>/dev/null
+    echo "[OK]	enable port 22"
 fi
 
-echo "ID="$IMAGE_ID
 if [[ $EC2_BACKUP_FLAGS_AWS != "" ]]; then
     INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID \
         $EC2_BACKUP_FLAGS_AWS --key-name $KEY_PAIR_NAME --security-groups \
@@ -225,14 +233,18 @@ else
         text --query 'Instances[*].InstanceId')
 fi
 
+if [[ $? -ne 0 ]]; then
+    echo "[ERROR]	failed to create instance"
+    exit 1
+fi
+
 AVAILABILITY_ZONE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
     --output text --query 'Reservations[*].Instances[*].Placement[*].AvailabilityZone')
 
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    echo "Instance "$INSTANCE" was created"
+    echo "[ok]	instance $INSTANCE was created"
 fi
 
-echo hi
 if [[ $VOLUME != "" ]]; then
     check_volume
 else
@@ -243,20 +255,27 @@ fi
 EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE \
     --output text --query 'Reservations[*].Instances[*].NetworkInterfaces.Association.PublicIp')
 
-echo $EC2_HOST
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "[processing]	waiting for instance, it might take 20 seconds"
+fi
 
 while [ 1 ]; do
     STATUE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
         --output text --query 'Reservations[*].Instances[*].State[*].Name')
-    echo $STATUE
     if [[ $STATUE = "running" ]]; then
+        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+            echo "[OK]	instance is running"
+        fi
         break
     fi
     sleep 1
 done
 
 aws ec2 attach-volume --volume-id $VOLUME_ID --instance-id $INSTANCE \
-    --device /dev/xvdf
+    --device /dev/xvdf &>/dev/null
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "[OK]	volume $VOLUME_ID has been attached on instance $INSTANCE"
+fi
 
 if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
     EC2_BACKUP_FLAGS_SSH="-i $HOME/ec2_backup_KP.pem"
@@ -264,27 +283,33 @@ fi
 
 MOUNT_DIR='/home/ubuntu/mount_point'
 
-echo "ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST "sudo mkfs -t ext4 /dev/xvdf""
-
 # do while because ssh command may rejected
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "[processing]	waiting for first time ssh to instance, it might takes 20 seconds"
+fi
+
 while [ 1 ]; do
     ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
-        "sudo mkfs -t ext4 /dev/xvdf"
+        "sudo mkfs -t ext4 /dev/xvdf" &>/dev/null
 
     if [ $? -eq 0 ]; then
+        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+            echo "[ok]	file system has been created on volume"
+        fi
         break
     fi
     sleep 1
 done
 
 ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
-    "sudo mkdir $MOUNT_DIR"
+    "sudo mkdir $MOUNT_DIR" &>/dev/null
 
 ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
-    "sudo mount /dev/xvdf $MOUNT_DIR"
+    "sudo mount /dev/xvdf $MOUNT_DIR" &>/dev/null
 
 ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
-    "sudo chown ubuntu $MOUNT_DIR"
+    "sudo chown ubuntu $MOUNT_DIR" &>/dev/null
+
 ######################################
 #
 # created by YongCao (ycao18)
@@ -293,35 +318,34 @@ ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
 backup () {
 
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-        echo "[INFO] Start backup process"
+        echo "[ok] start backup process, use $METHOD"
     fi
 
     if [[ $METHOD = "dd" ]]; then
         DATE=`date +%F_%T`
+        tar cf - $DIRECTORY | ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH \
+            ubuntu@$EC2_HOST dd of=$MOUNT_DIR/$DATE obs=512k &>/dev/null
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-            tar cf - $DIRECTORY | ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH \
-                ubuntu@$EC2_HOST dd of=$MOUNT_DIR/$DATE obs=512k
-        else
-            tar cf - $DIRECTORY | ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH \
-                ubuntu@$EC2_HOST dd of=$MOUNT_DIR/$DATE obs=512k &>/dev/null
+            echo "[ok]	dd finished"
         fi
     fi
 
     if [[ $METHOD = "rsync" ]]; then
-
+        rsync -aRc -e "ssh -o StrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu@$EC2_HOST:$MOUNT_DIR &>/dev/null
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-            rsync -aRc -e "ssh -o StrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu@$EC2_HOST:$MOUNT_DIR
-        else
-            rsync -aRc -e "ssh -o StrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu@$EC2_HOST:$MOUNT_DIR &>/dev/null
+            echo "[ok]	rsync finished"
         fi
     fi
 
     ###
 
-    ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo umount $MOUNT_DIR
+    ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo umount $MOUNT_DIR &>/dev/null
 
-    aws ec2 detach-volume --volume-id $VOLUME_ID
+    aws ec2 detach-volume --volume-id $VOLUME_ID &>/dev/null
 
+    if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+        echo "[OK]	volume has been detached"
+    fi
 }
 
 backup
@@ -329,33 +353,41 @@ backup
 # backup work finished, print volume-id
 #
 
-echo $VOLUME_ID
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "[ok] ---------volume-id $VOLUME_ID -------------"
+else
+    echo $VOLUME_ID
+fi
+
 
 #
 # terminal instance
 #
 SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --group-name $SECURITY_GROUP_NAME --query 'SecurityGroups[*].GroupId' --output text)
 
+aws ec2 terminate-instances --instance-ids $INSTANCE &>/dev/null
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    aws ec2 terminate-instances --instance-ids $INSTANCE
-    aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME
-    while [ 1 ]; do
-        aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
-        if [ $? -eq 0 ]; then
-            break;
-        fi
-        sleep 10
-    done
-else
-    aws ec2 terminate-instances --instance-ids $INSTANCE &>/dev/null
-    aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
-    while [ 1 ]; do
-        aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
-        if [ $? -eq 0 ]; then
-            break;
-        fi
-        sleep 10
-    done
+    echo "[ok] terminate instance"
+fi
+
+aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "[ok] delete key-pair"
+    echo "[processing] wait for deleting security group, it might takes 30 seconds"
+fi
+
+
+
+while [ 1 ]; do
+    aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
+    if [ $? -eq 0 ]; then
+        break;
+    fi
+    sleep 10
+done
+
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "[successed] volume-id:$VOLUME_ID"
 fi
 
 exit 0
