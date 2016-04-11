@@ -33,7 +33,7 @@ clean () {
 
     if [[ $KEY_PAIR_NAME != "" ]]; then
         aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
-        rm $HOME/ec2_backup_KP.pem
+        rm $HOME/$KEY_PAIR_NAME
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
             echo "[ok]	delete key-pair"
             echo "[run]	wait for deleting security group, it might takes 30 seconds"
@@ -253,18 +253,18 @@ fi
 
 if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
     KEY_PAIR_NAME="ec2_backup_KP"`date +%F_%T`
-    aws ec2 create-key-pair --key-name $KEY_PAIR_NAME --query 'KeyMaterial' --output text > $HOME/ec2_backup_KP.pem
+    aws ec2 create-key-pair --key-name $KEY_PAIR_NAME --query 'KeyMaterial' --output text > $HOME/$KEY_PAIR_NAME
 
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
         echo "[OK]	key-pair $KEY_PAIR_NAME was created"
     fi
-    EC2_BACKUP_FLAGS_SSH="-i $HOME/ec2_backup_KP.pem"
+    EC2_BACKUP_FLAGS_SSH="-i $HOME/$KEY_PAIR_NAME"
 else
     KEY_PAIR_NAME=$(awk '{print $2}' <<< $EC2_BACKUP_FLAG_SSH)
-    KEY_PAIR_NAME=$(basename $KEY_PAIR_NAME)
+    KEY_PAIR_NAME=$(basename "$KEY_PAIR_NAME")
 fi
 
-chmod 700 $HOME/ec2_backup_KP.pem
+chmod 700 $HOME/$KEY_PAIR_NAME
 
 SECURITY_GROUP_NAME="ec2_backup_security_group"`date +%F_%T`
 
