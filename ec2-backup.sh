@@ -21,11 +21,45 @@ EC2_HOST=''
 VISINDICATED=''
 BACKUP_FLAG='--instance-type t2.micro'
 
-#######################################
-#
-# Created by Jignesh
-#
+clean () {
+    if [[ $INSTANCE != "" ]]; then
+        aws ec2 terminate-instances --instance-ids $INSTANCE &>/dev/null
+        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+            echo "[ok]	terminate instance"
+        fi
+    fi
+
+    if [[ $KEY_PAIR_NAME != "" ]]; then
+        aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
+        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+            echo "[ok]	delete key-pair"
+            echo "[run]	wait for deleting security group, it might takes 30 seconds"
+        fi
+    fi
+
+    if [[ $SECURITY_GROUP_NAME != "" ]]; then
+        SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --group-name \
+            $SECURITY_GROUP_NAME --query 'SecurityGroups[*].GroupId' --output text) &>/dev/null
+
+        if [[ $SECURITY_GROUP_ID != "" ]]; then
+            while [ 1 ]; do
+                aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
+                if [ $? -eq 0 ]; then
+                    echo "[ok]	delete security group"
+                    break;
+                fi
+                sleep 10
+            done
+        fi
+    fi
+}
+
 trap ctrl_c INT
+
+ctrl_c () {
+    clean
+    exit 130
+}
 
 
 usage() {
@@ -121,6 +155,7 @@ create_volume () {
 
     if [[ "$VOLUME_ID" = "" ]]; then
         echo "Failed to create volume"
+        clean
         exit 1;
     fi
 
@@ -133,8 +168,7 @@ create_volume () {
 #if -v is indicated, check the size of volume
 #Create instance and attach volume, mount disk
 #
-#Created by Richard
-#
+
 check_volume () {
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
         echo "[run]	check volume"
@@ -143,7 +177,13 @@ check_volume () {
     aws ec2 detach-volume --volume-id $VOLUME_ID &>/dev/null
 
     VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME_ID \
-        --query 'Volumes[*].[Size]' --output text)
+        --query 'Volumes[*].[Size]' --output text) &>/dev/null
+
+    if [[ $VOLUME_SIZE = "" ]]; then
+        echo "[error]	invalid volume-id"
+        clean
+        exit 1
+    fi
 
     if [ 1 -eq `echo "$VOLUME_SIZE > ($DIR_SIZE * 2)" | bc` ]; then
 
@@ -152,6 +192,7 @@ check_volume () {
             --output text)
     else
         echo "[error]	it require larger volume"
+        clean
         exit 1
     fi
 
@@ -233,6 +274,7 @@ fi
 
 if [[ $? -ne 0 ]]; then
     echo "[ERROR]	failed to create instance"
+    clean
     exit 1
 fi
 
@@ -310,7 +352,7 @@ ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
 
 ######################################
 #
-# created by YongCao (ycao18)
+# 
 # execute backup dd/rsync
 # trap CTRL-C signal
 backup () {
@@ -361,43 +403,10 @@ fi
 #
 # terminal instance
 #
-clean () {
-    if [[ $INSTANCE != "" ]]; then
-        aws ec2 terminate-instances --instance-ids $INSTANCE &>/dev/null
-        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-            echo "[ok]	terminate instance"
-        fi
-    fi
-
-    if [[ $KEY_PAIR_NAME != "" ]]; then
-        aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
-        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-            echo "[ok]	delete key-pair"
-            echo "[run]	wait for deleting security group, it might takes 30 seconds"
-        fi
-    fi
-
-    if [[ $SECURITY_GROUP_NAME != "" ]]; then
-        SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --group-name $SECURITY_GROUP_NAME --query 'SecurityGroups[*].GroupId' --output text)
-
-        while [ 1 ]; do
-            aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
-            if [ $? -eq 0 ]; then
-                break;
-            fi
-            sleep 10
-        done
-
-        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-            echo "[successed]	volume-id:$VOLUME_ID"
-        fi
-    fi
-}
-
-ctrl_c () {
-    clean
-    exit 130
-}
 
 clean
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "[successed]	volume-id:$VOLUME_ID"
+fi
+
 exit 0
