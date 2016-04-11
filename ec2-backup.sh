@@ -27,18 +27,6 @@ BACKUP_FLAG='--instance-type t2.micro'
 #
 trap ctrl_c INT
 
-ctrl_c () {
-    if [[ $KEY_PAIR_NAME != '' ]]; then
-        ec2-delete-keypair $KEY_PAIRNAME
-    fi
-
-    if [[ $SECURITY_GROUP_NAME != '' ]]; then
-        aws ec2 delete-security-group --group-name \
-            $SECURITY_GROUP_NAME
-    fi
-
-    exit 0
-}
 
 usage() {
     echo "usage: ec2-backup [-h] [-m method] [-v volume-id] dir"
@@ -76,6 +64,7 @@ fi
 
 if [ -n "$METHOD" -a "$METHOD" != "dd" -a "$METHOD" != "rsync" ]; then
     echo "${0}: Valid methods are 'dd' and 'rsync'; default is 'dd'."
+    usage
     exit 1
 fi
 
@@ -147,20 +136,29 @@ create_volume () {
 #Created by Richard
 #
 check_volume () {
+    if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+        echo "[run]	check volume"
+    fi
+
+    aws ec2 detach-volume --volume-id $VOLUME_ID &>/dev/null
 
     VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME_ID \
         --query 'Volumes[*].[Size]' --output text)
 
-
-    if [ $VOLUME_SIZE -ge `expr $DIR_SIZE \* 2` ];then
+    if [ 1 -eq `echo "$VOLUME_SIZE > ($DIR_SIZE * 2)" | bc` ]; then
 
         AVAILABILITY_ZONE=$(aws ec2 describe-volumes --volume-ids \
             $VOLUME_ID --query 'Volumes[*].[AvailabilityZone]' \
             --output text)
-
     else
+        echo "[error]	it require larger volume"
         exit 1
     fi
+
+    if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+        echo "[ok]	volume is valid"
+    fi
+
 }
 
 
@@ -245,7 +243,7 @@ if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
     echo "[ok]	instance $INSTANCE was created"
 fi
 
-if [[ $VOLUME != "" ]]; then
+if [[ $VOLUME_ID != "" ]]; then
     check_volume
 else
     create_volume
@@ -256,7 +254,7 @@ EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE \
     --output text --query 'Reservations[*].Instances[*].NetworkInterfaces.Association.PublicIp')
 
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    echo "[processing]	waiting for instance, it might take 20 seconds"
+    echo "[run]	waiting for instance, it might takes 20 seconds"
 fi
 
 while [ 1 ]; do
@@ -285,7 +283,7 @@ MOUNT_DIR='/home/ubuntu/mount_point'
 
 # do while because ssh command may rejected
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    echo "[processing]	waiting for first time ssh to instance, it might takes 20 seconds"
+    echo "[run]	waiting for first time ssh to instance, it might takes 20 seconds"
 fi
 
 while [ 1 ]; do
@@ -318,7 +316,7 @@ ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
 backup () {
 
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-        echo "[ok] start backup process, use $METHOD"
+        echo "[ok]	start backup process, use $METHOD"
     fi
 
     if [[ $METHOD = "dd" ]]; then
@@ -354,7 +352,7 @@ backup
 #
 
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    echo "[ok] ---------volume-id $VOLUME_ID -------------"
+    echo "[ok]	---------volume-id $VOLUME_ID -------------"
 else
     echo $VOLUME_ID
 fi
@@ -363,31 +361,43 @@ fi
 #
 # terminal instance
 #
-SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --group-name $SECURITY_GROUP_NAME --query 'SecurityGroups[*].GroupId' --output text)
-
-aws ec2 terminate-instances --instance-ids $INSTANCE &>/dev/null
-if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    echo "[ok] terminate instance"
-fi
-
-aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
-if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    echo "[ok] delete key-pair"
-    echo "[processing] wait for deleting security group, it might takes 30 seconds"
-fi
-
-
-
-while [ 1 ]; do
-    aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
-    if [ $? -eq 0 ]; then
-        break;
+clean () {
+    if [[ $INSTANCE != "" ]]; then
+        aws ec2 terminate-instances --instance-ids $INSTANCE &>/dev/null
+        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+            echo "[ok]	terminate instance"
+        fi
     fi
-    sleep 10
-done
 
-if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    echo "[successed] volume-id:$VOLUME_ID"
-fi
+    if [[ $KEY_PAIR_NAME != "" ]]; then
+        aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
+        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+            echo "[ok]	delete key-pair"
+            echo "[run]	wait for deleting security group, it might takes 30 seconds"
+        fi
+    fi
 
+    if [[ $SECURITY_GROUP_NAME != "" ]]; then
+        SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --group-name $SECURITY_GROUP_NAME --query 'SecurityGroups[*].GroupId' --output text)
+
+        while [ 1 ]; do
+            aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
+            if [ $? -eq 0 ]; then
+                break;
+            fi
+            sleep 10
+        done
+
+        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+            echo "[successed]	volume-id:$VOLUME_ID"
+        fi
+    fi
+}
+
+ctrl_c () {
+    clean
+    exit 130
+}
+
+clean
 exit 0
