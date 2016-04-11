@@ -10,6 +10,8 @@ DIRECTORY=''
 MOUNT_DIR=''
 VOLUME=''
 INSTANCE=''
+KEY_PAIR_NAME=''
+SECURITY_GROUP_NAME=''
 REGION=$(cat ~/.aws/config | grep "region" | sed 's/region = //g')
 AVAILABILITY_ZONE=''
 IMAGE_ID=''
@@ -23,6 +25,20 @@ BACKUP_FLAG='--instance-type t2.micro'
 #
 # Created by Jignesh
 #
+trap ctrl_c INT
+
+ctrl_c () {
+    if [[ $KEY_PAIR_NAME != '' ]]; then
+        ec2-delete-keypair $KEY_PAIRNAME
+    fi
+
+    if [[ $SECURITY_GROUP_NAME != '' ]]; then
+        aws ec2 delete-security-group --group-name \
+            $SECURITY_GROUP_NAME
+    fi
+
+    exit 0
+}
 
 usage() {
     echo "usage: ec2-backup [-h] [-m method] [-v volume-id] dir"
@@ -82,26 +98,37 @@ if [[ $DIR_SIZE = *K ]]; then
     DIR_SIZE=$(echo ${DIR_SIZE} | tr -cd "[0-9].")
 
     DIR_SIZE=$(echo $DIR_SIZE '/' 1024 | bc -l)
-    #DIR_SIZE=`$DIR_SIZE '/' 1024 | bc -l`
-    echo $DIR_SIZE
+    DIR_SIZE=$(echo $DIR_SIZE '/' 1024 | bc -l)
 elif [[ $DIR_SIZE = *M ]]; then
-    DIR_SIZE="$(echo ${DIR_SIZE} | tr -cd "[0-9].")"
-    echo "MB $DIR_SIZE"
+    DIR_SIZE=$(echo ${DIR_SIZE} | tr -cd "[0-9].")
+    DIR_SIZE=$(echo $DIR_SIZE '/' 2014 | bc -l)
+
 elif [[ $DIR_SIZE = *G ]]; then
     DIR_SIZE="$(echo ${DIR_SIZE} | tr -cd "[0-9].")"
-    echo "GB $DIR_SIZE"
 
 fi
 
-exit 0
-
 create_volume () {
-    AVAILABILITY_ZONE=$REGION"a"
-    VOLUME_ID=$(aws ec2 create-volume --size $VOLUME_SIZE --availability-zone $AVAILABILITY_ZONE --volume-type gp2 --output text | awk '{print $7}')
+    VOLUME_SIZE=$(echo $DIR_SIZE '*' 2 | bc -l)
+
+    if [ 1 -eq `echo "$VOLUME_SIZE < 1" | bc` ]; then
+        VOLUME_SIZE="1"
+    else
+        VOLUME_SIZE=${VOLUME_SIZE.*}
+        VOLUME_SIZE=$(expr $VOLUME + 1)
+    fi
+
+    VOLUME_ID=$(aws ec2 create-volume --size $VOLUME_SIZE \
+        --availability-zone $AVAILABILITY_ZONE --volume-type \
+        gp2 --output text | awk '{print $7}')
 
     if [[ "$VOLUME_ID" = "" ]]; then
         echo "Failed to create volume"
         exit 1;
+    fi
+
+    if [[ $EC2_BACKUP_VERBOSE != ""  ]]; then
+        echo "volume "$VOLUME_ID" was created"
     fi
 }
 ####################################
@@ -113,8 +140,8 @@ create_volume () {
 #
 check_volume () {
 
-    VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME --query \
-        'Volumes[*].[Size]' --output text)
+    VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME \
+        --query 'Volumes[*].[Size]' --output text)
 
 
     if [ $VOLUME_SIZE -ge `expr $DIR_SIZE \* 2` ];then
@@ -128,91 +155,96 @@ check_volume () {
     fi
 }
 
+
+#
+# create instance
+#
+IMAGE_IDs=(
+        'ami-fce3c696' 'ami-06116566'
+        'ami-9abea4fb' 'ami-f95ef58a'
+        'ami-87564feb' 'ami-a21529cc'
+        'ami-09dc1267' 'ami-25c00c46'
+        'ami-6c14310f' 'ami-0fb83963'
+        )
+
+if [[ $REGION = "us-east-1" ]]; then
+    IMAGE_ID=${IMAGE_IDs[0]}
+elif [[ $REGION = "us-west-1" ]]; then
+    IMAGE_ID=${IMAGE_IDs[1]}
+elif [[ $REGION = "us-west-2" ]]; then
+    IMAGE_ID=${IMAGE_IDs[2]}
+elif [[ $REGION = "eu-west-1" ]]; then
+    IMAGE_ID=${IMAGE_IDs[3]}
+elif [[ $REGION = "eu-central-1" ]]; then
+    IMAGE_ID=${IMAGE_IDs[4]}
+elif [[ $REGION = "ap-northeast-1" ]]; then
+    IMAGE_ID=${IMAGE_IDs[5]}
+elif [[ $REGION = "ap-northeast-2" ]]; then
+    IMAGE_ID=${IMAGE_IDs[6]}
+elif [[ $REGION = "ap-southeast-1" ]]; then
+    IMAGE_ID=${IMAGE_IDs[7]}
+elif [[ $REGION = "ap-southeast-2" ]]; then
+    IMAGE_ID=${IMAGE_IDs[8]}
+else
+    IMAGE_ID=${IMAGE_IDs[9]}
+fi
+
+KEY_PAIR_NAME="ec2_backup_KP"`date +%F_%T`
+aws ec2 create-key-pair --key-name $KEY_PAIR_NAME > ~/ec2_backup_KP.pem
+
+SECURITY_GROUP_NAME="ec2_backup_security_group"`date +%F_%T`
+
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    aws ec2 create-security-group --group-name $SECURITY_GROUP_NAME \
+        --description "ec2_backup_security_group"
+else
+    aws ec2 create_security-group --group-name $SECURITY_GROUP_NAME \
+        --description "ec2_backup_security_group" &>/dev/null
+fi
+
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    aws ec2 authorize-security-group-ingress --group-name \
+        $SECURITY_GROUP_NAME --port 22 --protocol tcp --cidr 0.0.0.0/0
+else
+    aws ec2 authorize-security-group-ingress --group-name \
+         $SECURITY_GROUP_NAME --port 22 --protocol tcp --cidr 0.0.0.0/0 &>/dev/null
+fi
+
+echo "ID="$IMAGE_ID
+if [[ $EC2_BACKUP_FLAGS_AWS != "" ]]; then
+    INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID \
+        $EC2_BACKUP_FLAGS_AWS --key-name $KEY_PAIR_NAME --security-groups \
+        $SECURITY_GROUP_NAME --output text --query \
+        'Instances[*].InstanceId')
+else
+    INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID \
+        $BACKUP_FLAG --key-name $KEY_PAIR_NAME \
+        --security-groups $SECURITY_GROUP_NAME --output \
+        text --query 'Instances[*].InstanceId')
+fi
+
+AVAILABILITY_ZONE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
+    --output text --query 'Reservations[*].Instances[*].Placement[*].\
+    Availability')
+
+if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+    echo "Instance "$INSTANCE" was created"
+    echo $INSTANCE
+fi
+
+
 if [[ $VOLUME != "" ]]; then
     check_volume
 else
     create_volume
 fi
 
-#
-# create instance
-#
-IMAGE_ID[0]='ami-fce3c696'
-IMAGE_ID[1]='ami-06116566'
-IMAGE_ID[2]='ami-9abea4fb'
-IMAGE_ID[3]='ami-f95ef58a'
-IMAGE_ID[4]='ami-87564feb'
-IMAGE_ID[5]='ami-a21529cc'
-IMAGE_ID[6]='ami-09dc1267'
-IMAGE_ID[7]='ami-25c00c46'
-IMAGE_ID[8]='ami-6c14310f'
-IMAGE_ID[9]='ami-0fb83963'
-
-if [[ $REGION = "us-east-1" ]]; then
-    IMAGE_ID=IMAGE_ID[0]
-elif [[ $REGION = "us-west-1" ]]; then
-    IMAGE_ID=IMAGE_ID[1]
-elif [[ $REGION = "us-west-2" ]]; then
-    IMAGE_ID=IMAGE_ID[2]
-elif [[ $REGION = "eu-west-1" ]]; then
-    IMAGE_ID=IMAGE_ID[3]
-elif [[ $REGION = "eu-central-1" ]]; then
-    IMAGE_ID=IMAGE_ID[4]
-elif [[ $REGION = "ap-northeast-1" ]]; then
-    IMAGE_ID=IMAGE_ID[5]
-elif [[ $REGION = "ap-northeast-2" ]]; then
-    IMAGE_ID=IMAGE_ID[6]
-elif [[ $REGION = "ap-southeast-1" ]]; then
-    IMAGE_ID=IMAGE_ID[7]
-elif [[ $REGION = "ap-southeast-2" ]]; then
-    IMAGE_ID=IMAGE_ID[8]
-else [[ $REGION = "sa-east-1" ]]; then
-    IMAGE_ID=IMAGE_ID[9]
-fi
-
-if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    aws ec2 create-key-pair --key-name ec2_backup_KP
-else
-    aws ec2 create-key-pair --key-name ec2_backup_KP &>/dev/null
-fi
-
-if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    aws ec2 create-security-group --group-name ec2_backup_SG
-else
-    aws ec2 create_security-group --group-name ec2_backup_SG &>/dev/null
-fi
-
-if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    aws ec2 authorize-security-group-ingress --group-name \
-        ec2_backup_SG --port 22 --protocol tcp --cidr 0.0.0.0/0
-else
-    aws ec2 authorize-security-group-ingress --group-name \
-        ec2_backup_SG --port 22 --protocol tcp --cidr 0.0.0.0/0 &>/dev/null
-fi
-
-
-if [[ $EC2_BACKUP_FLAGS_AWS != "" ]]; then
-    INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID \
-        $BACKUP_FLAG --key-name ec2_backup_KP --security-groups \
-        ec2_backup_SG --availability-zone $AVAILABILITY_ZONE \
-        --output text --query 'Instances[*].InstanceId')
-else
-    INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID \
-        $EC2_BACKUP_FLAGS_AWS --key-name ec2_backup_KP \
-        --security-groups ec2_backup_SG --availability-zone \
-        $AVAILABILITY_ZONE --output text --query \
-        'Instances[*].InstanceId')
-fi
-
-if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-    echo "Instance "$INSTANCE" was created"
-fi
 
 EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE \
     --output text --query 'Reservations[*].Instances[*].\
     NetworkInterfaces.Association.PublicIp')
-
-
+echo $EC2_HOST
+exit 0
 aws ec2 attach-volume --volume-id $VOLUME --instance-id $INSTANCE \
     --device /dev/xvdf
 
@@ -233,6 +265,10 @@ backup () {
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
         echo "[INFO] Start backup process"
     fi
+
+    if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
+        EC2_BACKUP_FLAGS_SSH="~/ec2_backup_KP"
+    if
 
     if [[ $METHOD = "dd" ]]; then
         DATE=`date +%F_%T`
@@ -276,6 +312,7 @@ echo $VOLUME
 #
 if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
     ec2-stop-instances $INSTANCE
+
 else
     ec2-stop-instances $INSTANCE &>/dev/null
 fi
