@@ -21,6 +21,7 @@ EC2_HOST=''
 VISINDICATED=''
 BACKUP_FLAG='--instance-type t2.micro'
 GIVEN_VOLUME_MODE=''
+GIVEN_KEY_PAIR=''
 
 clean () {
     if [[ $INSTANCE != "" ]]; then
@@ -31,7 +32,7 @@ clean () {
         fi
     fi
 
-    if [[ $KEY_PAIR_NAME != "" ]]; then
+    if [[ $GIVEN_KEY_PAIR = "" ]]; then
         aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
         rm $HOME/$KEY_PAIR_NAME
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
@@ -260,7 +261,8 @@ if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
     fi
     EC2_BACKUP_FLAGS_SSH="-i $HOME/$KEY_PAIR_NAME"
 else
-    KEY_PAIR_NAME=$(awk '{print $2}' <<< $EC2_BACKUP_FLAG_SSH)
+    GIVEN_KEY_PAIR="YES"
+    KEY_PAIR_NAME=$(awk '{print $2}' <<< $EC2_BACKUP_FLAGS_SSH)
     KEY_PAIR_NAME=$(basename "$KEY_PAIR_NAME")
 fi
 
