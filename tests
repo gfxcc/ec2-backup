@@ -1,8 +1,0 @@
-[1] invalid volume id - pass
-[2] invalid method specified - pass
-[3] CTRL C SIG - pass
-[4] Backup method - dd - pass
-[5] Backup method - rsync - pass
-[6] -v volume id - pass
-[7] ENV variables - pass
-

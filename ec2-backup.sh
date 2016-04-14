@@ -87,7 +87,7 @@ usage() {
     exit 0
 }
 
-while getopts 'hm:v:' opt; do
+while getopts 'hm:v:V' opt; do
     case ${opt} in
         h)
             usage
@@ -99,6 +99,8 @@ while getopts 'hm:v:' opt; do
             GIVEN_VOLUME_MODE="YES"
             VOLUME_ID=$OPTARG
             ;;
+        V)
+            EC2_BACKUP_VERBOSE="YES"
     esac
 done
 
@@ -170,13 +172,13 @@ create_volume () {
         gp2 --output text | awk '{print $7}')
 
     if [[ "$VOLUME_ID" = "" ]]; then
-        echo "Failed to create volume"
+        echo "[error]	failed to create volume"
         clean 1
         exit 1;
     fi
 
     if [[ $EC2_BACKUP_VERBOSE != ""  ]]; then
-        echo "[OK]	volume $VOLUME_ID was created"
+        echo "[ok]	volume $VOLUME_ID was created"
     fi
 }
 ####################################
