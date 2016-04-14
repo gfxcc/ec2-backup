@@ -173,7 +173,7 @@ check_argument () {
 transfer_size () {
     # get last argument
     #
-    ransfer K, M to G
+    #ransfer K, M to G
     #
     DIR_SIZE="$(du -sh ${DIRECTORY} | awk '{print $1}')"
 
@@ -284,7 +284,8 @@ create_instance () {
     fi
 
     AVAILABILITY_ZONE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
-        --output text --query 'Reservations[*].Instances[*].Placement[*].AvailabilityZone')
+        --output text --query 'Reservations[*].Instances[*].[Placement.AvailabilityZone]')
+
 
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
         echo "[ok]	instance $INSTANCE was created"
@@ -293,7 +294,7 @@ create_instance () {
 
 ssh_process () {
     EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE \
-        --output text --query 'Reservations[*].Instances[*].NetworkInterfaces.Association.PublicIp')
+        --output text --query 'Reservations[*].Instances[*].NetworkInterfaces[*].[Association.PublicIp]')
 
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
         echo "[run]	waiting for instance, it might takes 20 seconds"
@@ -307,7 +308,7 @@ ssh_process () {
             exit 1
         fi
         STATUE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
-            --output text --query 'Reservations[*].Instances[*].State[*].Name')
+            --output text --query 'Reservations[*].Instances[*].[State.Name]')
         if [[ $STATUE = "running" ]]; then
             if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
                 echo "[ok]	instance is running"
