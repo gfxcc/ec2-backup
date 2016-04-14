@@ -24,12 +24,39 @@ GIVEN_VOLUME_MODE=''
 GIVEN_KEY_PAIR=''
 
 clean () {
+    echo "[ok]	clean process"
     if [[ $INSTANCE != "" ]]; then
         aws ec2 terminate-instances --instance-ids $INSTANCE &>/dev/null
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-            echo "[run]	clean process"
-            echo "[ok]	terminate instance"
+            echo "[run]	terminate instance"
         fi
+
+        limite=0
+        while [ 1 ]; do
+            if [ $limite -gt 50 ]; then
+                echo "[error] fail to terminate instance, pleace check network"
+                clean 1
+                exit 1
+            fi
+            STATUS=$(aws ec2 describe-instances --instance-ids $INSTANCE \
+                --output text --query 'Reservations[*].Instances[*].[State.Name]')
+            if [[ $STATUS = "terminated" ]]; then
+                if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+                    echo "[ok]	instance has terminated"
+                fi
+                break
+            fi
+            limite=`expr $limite + 1`
+
+            if [ $(($limite%2)) -eq 0 ]; then
+                echo -ne "-\r"
+            else
+                echo -ne "|\r"
+            fi
+
+            sleep 1
+        done
+
     fi
 
     if [[ $GIVEN_KEY_PAIR = "" ]]; then
@@ -37,7 +64,6 @@ clean () {
         rm $HOME/$KEY_PAIR_NAME
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
             echo "[ok]	delete key-pair"
-            echo "[run]	wait for deleting security group, it might takes 30 seconds"
         fi
     fi
 
@@ -45,17 +71,8 @@ clean () {
         SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --group-name \
             $SECURITY_GROUP_NAME --query 'SecurityGroups[*].GroupId' --output text) &>/dev/null
 
-        if [[ $SECURITY_GROUP_ID != "" ]]; then
-            while [ 1 ]; do
-                aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID &>/dev/null
-                if [ $? -eq 0 ]; then
-                    if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
-                        echo "[ok]	delete security group"
-                    fi
-                    break;
-                fi
-                sleep 10
-            done
+        if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
+            echo "[ok]	delete security group"
         fi
     fi
 
@@ -237,7 +254,8 @@ create_instance () {
 
     if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
         KEY_PAIR_NAME="ec2_backup_KP"`date +%F_%T`
-        aws ec2 create-key-pair --key-name $KEY_PAIR_NAME --query 'KeyMaterial' --output text > $HOME/$KEY_PAIR_NAME
+        aws ec2 create-key-pair --key-name $KEY_PAIR_NAME --query 'KeyMaterial' \
+            --output text > $HOME/$KEY_PAIR_NAME
 
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
             echo "[ok]	key-pair $KEY_PAIR_NAME was created"
@@ -294,7 +312,8 @@ create_instance () {
 
 ssh_process () {
     EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE \
-        --output text --query 'Reservations[*].Instances[*].NetworkInterfaces[*].[Association.PublicIp]')
+        --output text --query 'Reservations[*].Instances[*].NetworkInterfaces[*].
+    [Association.PublicIp]')
 
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
         echo "[run]	waiting for instance, it might takes 20 seconds"
@@ -316,6 +335,13 @@ ssh_process () {
             break
         fi
         limite=`expr $limite + 1`
+
+        if [ $(($limite%2)) -eq 0 ]; then
+            echo -ne "-\r"
+        else
+            echo -ne "|\r"
+        fi
+
         sleep 1
     done
 
@@ -324,7 +350,6 @@ ssh_process () {
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
         echo "[ok]	volume $VOLUME_ID has been attached on instance $INSTANCE"
     fi
-
 
     MOUNT_DIR='/home/ubuntu/mount_point'
 
@@ -375,22 +400,21 @@ backup_process () {
     fi
 
     if [[ $METHOD = "rsync" ]]; then
-        rsync -aRc -e "ssh -o StrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" $DIRECTORY ubuntu@$EC2_HOST:$MOUNT_DIR &>/dev/null
+        rsync -aRc -e "ssh -o StrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH" \
+            $DIRECTORY ubuntu@$EC2_HOST:$MOUNT_DIR &>/dev/null
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
             echo "[ok]	rsync finished"
         fi
     fi
 
-    ###
-
-    ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST sudo umount $MOUNT_DIR &>/dev/null
+    ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH ubuntu@$EC2_HOST \
+        sudo umount $MOUNT_DIR &>/dev/null
 
     aws ec2 detach-volume --volume-id $VOLUME_ID &>/dev/null
 
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
         echo "[ok]	volume has been detached"
     fi
-
 
     #
     # backup work finished, print volume-id
