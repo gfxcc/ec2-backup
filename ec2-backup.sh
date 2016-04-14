@@ -185,7 +185,7 @@ create_volume () {
 #
 #if -v is indicated, check the size of volume
 #Create instance and attach volume, mount disk
-#
+
 
 check_volume () {
     if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
