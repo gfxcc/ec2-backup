@@ -12,14 +12,13 @@ VOLUME_ID=''
 INSTANCE=''
 KEY_PAIR_NAME=''
 SECURITY_GROUP_NAME=''
-REGION=$(cat ~/.aws/config | grep "region" | sed 's/region = //g')
+REGION=$(grep "region" ~/.aws/config | sed 's/region = //g')
 AVAILABILITY_ZONE=''
 IMAGE_ID=''
 VOLUME_SIZE=''
 DIR_SIZE=''
 EC2_HOST=''
-VISINDICATED=''
-BACKUP_FLAG='--instance-type t2.micro'
+BACKUP_FLAG="--instance-type t2.micro"
 GIVEN_VOLUME_MODE=''
 GIVEN_KEY_PAIR=''
 
@@ -32,7 +31,7 @@ clean () {
         fi
 
         limite=0
-        while [ 1 ]; do
+        while true; do
             if [ $limite -gt 50 ]; then
                 echo "[error] fail to terminate instance, pleace check network"
                 clean 1
@@ -46,9 +45,9 @@ clean () {
                 fi
                 break
             fi
-            limite=`expr $limite + 1`
+            limite=$((limite + 1))
 
-            if [ $(($limite%2)) -eq 0 ]; then
+            if [ $((limite%2)) -eq 0 ]; then
                 echo -ne "-\r"
             else
                 echo -ne "|\r"
@@ -61,7 +60,7 @@ clean () {
 
     if [[ $GIVEN_KEY_PAIR = "" ]]; then
         aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME &>/dev/null
-        rm $HOME/$KEY_PAIR_NAME
+        rm "$HOME/$KEY_PAIR_NAME"
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
             echo "[ok]	delete key-pair"
         fi
@@ -71,12 +70,13 @@ clean () {
         SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --group-name \
             $SECURITY_GROUP_NAME --query 'SecurityGroups[*].GroupId' --output text) &>/dev/null
 
+        aws ec2 delete-security-group --group-id "$SECURITY_GROUP_ID" &>/dev/null
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
             echo "[ok]	delete security group"
         fi
     fi
 
-    if [ $1 -ne 0 ]; then
+    if [ "$1" -ne 0 ]; then
         if [[ $GIVEN_VOLUME_MODE = "" ]]; then
             if [[ $VOLUME_ID != "" ]]; then
                 aws ec2 delete-volume --volume-id $VOLUME_ID &>/dev/null
@@ -101,11 +101,11 @@ usage() {
 create_volume () {
     VOLUME_SIZE=$(echo $DIR_SIZE '*' 2 | bc -l)
 
-    if [ 1 -eq `echo "$VOLUME_SIZE < 1" | bc` ]; then
+    if [ 1 -eq "$(echo "$VOLUME_SIZE < 1" | bc)" ]; then
         VOLUME_SIZE="1"
     else
         VOLUME_SIZE=${VOLUME_SIZE.*}
-        VOLUME_SIZE=$(expr $VOLUME + 1)
+        VOLUME_SIZE=$((VOLUME + 1))
     fi
     VOLUME_ID=$(aws ec2 create-volume --size $VOLUME_SIZE \
         --availability-zone $AVAILABILITY_ZONE --volume-type \
@@ -127,7 +127,7 @@ check_volume () {
         echo "[run]	check volume"
     fi
 
-    aws ec2 detach-volume --volume-id $VOLUME_ID &>/dev/null
+    aws ec2 detach-volume --volume-id "$VOLUME_ID" &>/dev/null
 
     VOLUME_SIZE=$(aws ec2 describe-volumes --volume-ids $VOLUME_ID \
         --query 'Volumes[*].[Size]' --output text &>/dev/null)
@@ -138,10 +138,10 @@ check_volume () {
         exit 1
     fi
 
-    if [ 1 -eq `echo "$VOLUME_SIZE > ($DIR_SIZE * 2)" | bc` ]; then
+    if [ 1 -eq "$(echo "$VOLUME_SIZE > ($DIR_SIZE * 2)" | bc)" ]; then
 
         AVAILABILITY_ZONE=$(aws ec2 describe-volumes --volume-ids \
-            $VOLUME_ID --query 'Volumes[*].[AvailabilityZone]' \
+            "$VOLUME_ID" --query 'Volumes[*].[AvailabilityZone]' \
             --output text) &>/dev/null
     else
         echo "[error]	it require larger volume"
@@ -164,7 +164,7 @@ check_argument () {
         exit 1
     fi
 
-    if [ -n "$METHOD" -a "$METHOD" != "dd" -a "$METHOD" != "rsync" ]; then
+    if [ -n $METHOD ] && [ $METHOD != "dd" ] && [ $METHOD != "rsync" ]; then
         echo "${0}: Valid methods are 'dd' and 'rsync'; default is 'dd'."
         usage
         exit 1
@@ -175,7 +175,7 @@ check_argument () {
         exit 1
     fi
 
-    if [ ! -d "$DIRECTORY" ]; then
+    if [ ! -d $DIRECTORY ]; then
         echo "${0}: ${DIRECTORY} No such directory"
         exit 1
     fi
@@ -192,19 +192,19 @@ transfer_size () {
     #
     #ransfer K, M to G
     #
-    DIR_SIZE="$(du -sh ${DIRECTORY} | awk '{print $1}')"
+    DIR_SIZE="$(du -sh $DIRECTORY | awk '{print $1}')"
 
     if [[ $DIR_SIZE = *K ]]; then
-        DIR_SIZE=$(echo ${DIR_SIZE} | tr -cd "[0-9].")
+        DIR_SIZE=$(echo $DIR_SIZE | tr -cd "[0-9].")
 
         DIR_SIZE=$(echo $DIR_SIZE '/' 1024 | bc -l)
         DIR_SIZE=$(echo $DIR_SIZE '/' 1024 | bc -l)
     elif [[ $DIR_SIZE = *M ]]; then
-        DIR_SIZE=$(echo ${DIR_SIZE} | tr -cd "[0-9].")
+        DIR_SIZE=$(echo $DIR_SIZE | tr -cd "[0-9].")
         DIR_SIZE=$(echo $DIR_SIZE '/' 2014 | bc -l)
 
     elif [[ $DIR_SIZE = *G ]]; then
-        DIR_SIZE="$(echo ${DIR_SIZE} | tr -cd "[0-9].")"
+        DIR_SIZE="$(echo $DIR_SIZE | tr -cd "[0-9].")"
 
     fi
 
@@ -253,7 +253,7 @@ create_instance () {
     fi
 
     if [[ $EC2_BACKUP_FLAGS_SSH = "" ]]; then
-        KEY_PAIR_NAME="ec2_backup_KP"`date +%F_%T`
+        KEY_PAIR_NAME="ec2_backup_KP"$(date +%F_%T)
         aws ec2 create-key-pair --key-name $KEY_PAIR_NAME --query 'KeyMaterial' \
             --output text > $HOME/$KEY_PAIR_NAME
 
@@ -264,12 +264,12 @@ create_instance () {
     else
         GIVEN_KEY_PAIR="YES"
         KEY_PAIR_NAME=$(awk '{print $2}' <<< $EC2_BACKUP_FLAGS_SSH)
-        KEY_PAIR_NAME=$(basename "$KEY_PAIR_NAME")
+        KEY_PAIR_NAME=$(basename $KEY_PAIR_NAME)
     fi
 
-    chmod 700 $HOME/$KEY_PAIR_NAME
+    chmod 700 "$HOME/$KEY_PAIR_NAME"
 
-    SECURITY_GROUP_NAME="ec2_backup_security_group"`date +%F_%T`
+    SECURITY_GROUP_NAME="ec2_backup_security_group"$(date +%F_%T)
 
     aws ec2 create-security-group --group-name $SECURITY_GROUP_NAME \
         --description "ec2_backup_security_group" &>/dev/null
@@ -290,9 +290,8 @@ create_instance () {
             'Instances[*].InstanceId')
     else
         INSTANCE=$(aws ec2 run-instances --image-id $IMAGE_ID \
-            $BACKUP_FLAG --key-name $KEY_PAIR_NAME \
-            --security-groups $SECURITY_GROUP_NAME --output \
-            text --query 'Instances[*].InstanceId')
+            $BACKUP_FLAG --key-name $KEY_PAIR_NAME --security-groups \
+            $SECURITY_GROUP_NAME --output text --query 'Instances[*].InstanceId')
     fi
 
     if [[ $? -ne 0 ]]; then
@@ -301,7 +300,7 @@ create_instance () {
         exit 1
     fi
 
-    AVAILABILITY_ZONE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
+    AVAILABILITY_ZONE=$(aws ec2 describe-instances --instance-ids "$INSTANCE" \
         --output text --query 'Reservations[*].Instances[*].[Placement.AvailabilityZone]')
 
 
@@ -311,7 +310,7 @@ create_instance () {
 }
 
 ssh_process () {
-    EC2_HOST=$(aws ec2 describe-instances --instance-ids $INSTANCE \
+    EC2_HOST=$(aws ec2 describe-instances --instance-ids "$INSTANCE" \
         --output text --query 'Reservations[*].Instances[*].NetworkInterfaces[*].
     [Association.PublicIp]')
 
@@ -320,13 +319,13 @@ ssh_process () {
     fi
 
     limite=0
-    while [ 1 ]; do
+    while true; do
         if [ $limite -gt 50 ]; then
             echo "[error] fail to ssh 50 times, please check key-pair, network"
             clean 1
             exit 1
         fi
-        STATUE=$(aws ec2 describe-instances --instance-ids $INSTANCE \
+        STATUE=$(aws ec2 describe-instances --instance-ids "$INSTANCE" \
             --output text --query 'Reservations[*].Instances[*].[State.Name]')
         if [[ $STATUE = "running" ]]; then
             if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
@@ -334,9 +333,9 @@ ssh_process () {
             fi
             break
         fi
-        limite=`expr $limite + 1`
+        limite=$((limite + 1))
 
-        if [ $(($limite%2)) -eq 0 ]; then
+        if [ $((limite%2)) -eq 0 ]; then
             echo -ne "-\r"
         else
             echo -ne "|\r"
@@ -358,7 +357,7 @@ ssh_process () {
         echo "[run]	waiting for first time ssh to instance, it might takes 20 seconds"
     fi
 
-    while [ 1 ]; do
+    while true; do
         ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
             "sudo mkfs -t ext4 /dev/xvdf" &>/dev/null
 
@@ -372,13 +371,13 @@ ssh_process () {
     done
 
     ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
-        "sudo mkdir $MOUNT_DIR" &>/dev/null
+        'sudo mkdir $MOUNT_DIR' &>/dev/null
 
     ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
-        "sudo mount /dev/xvdf $MOUNT_DIR" &>/dev/null
+        'sudo mount /dev/xvdf $MOUNT_DIR' &>/dev/null
 
     ssh $EC2_BACKUP_FLAGS_SSH -o StrictHostKeyChecking=no -v ubuntu@$EC2_HOST \
-        "sudo chown ubuntu $MOUNT_DIR" &>/dev/null
+        'sudo chown ubuntu $MOUNT_DIR' &>/dev/null
 }
 ######################################
 #
@@ -391,7 +390,7 @@ backup_process () {
     fi
 
     if [[ $METHOD = "dd" ]]; then
-        DATE=`date +%F_%T`
+        DATE=$(date +%F_%T)
         tar cf - $DIRECTORY | ssh -oStrictHostKeyChecking=no $EC2_BACKUP_FLAGS_SSH \
             ubuntu@$EC2_HOST dd of=$MOUNT_DIR/$DATE obs=512k &>/dev/null
         if [[ $EC2_BACKUP_VERBOSE != "" ]]; then
@@ -454,7 +453,7 @@ ec2_backup_main_process () {
         esac
     done
 
-    check_argument $@
+    check_argument "$@"
 
     transfer_size
 
@@ -480,6 +479,6 @@ ec2_backup_main_process () {
 }
 
 
-ec2_backup_main_process $@
+ec2_backup_main_process "$@"
 
 
